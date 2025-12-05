@@ -18,7 +18,8 @@ const pool = new Pool({
   host: params.hostname,
   port: parseInt(params.port),
   database: params.pathname.split('/')[1],
-  ssl: { rejectUnauthorized: false }
+  ssl: { rejectUnauthorized: false },
+  family: 4  // ⚡ Forzar IPv4
 });
 
 const SECRET_KEY = 'token1';
