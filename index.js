@@ -12,8 +12,11 @@ const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
   ssl: {
     rejectUnauthorized: false
-  }
+  },
+  // Forzar IPv4
+  host: 'db.orjnlhfwvhmcetmbfpnt.supabase.co'
 });
+
 
 const SECRET_KEY = 'token1';
 
