@@ -1,6 +1,7 @@
 const express = require('express');
 const cors = require('cors');
 const { Pool } = require('pg');
+const url = require('url');
 const jwt = require('jsonwebtoken');
 
 const app = express();
@@ -8,15 +9,17 @@ app.use(cors());
 app.use(express.json());
 
 // === CONEXIÓN A SUPABASE / RENDER ===
-const pool = new Pool({
-  connectionString: process.env.DATABASE_URL,
-  ssl: {
-    rejectUnauthorized: false
-  },
-  // Forzar IPv4
-  host: 'db.orjnlhfwvhmcetmbfpnt.supabase.co'
-});
+const params = url.parse(process.env.DATABASE_URL);
+const auth = params.auth.split(':');
 
+const pool = new Pool({
+  user: auth[0],
+  password: auth[1],
+  host: params.hostname,
+  port: parseInt(params.port),
+  database: params.pathname.split('/')[1],
+  ssl: { rejectUnauthorized: false }
+});
 
 const SECRET_KEY = 'token1';
 
