@@ -7,7 +7,7 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 
-// === CONEXIÓN A SUPABASE ===
+// === CONEXIÓN A SUPABASE / RENDER ===
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
   ssl: {
@@ -30,7 +30,6 @@ app.post('/usuarios', async (req, res) => {
     );
 
     res.json({ ok: true });
-
   } catch (err) {
     console.error("Error en /usuarios:", err);
     res.status(500).json({ error: err.message });
@@ -51,7 +50,6 @@ app.post('/login', async (req, res) => {
 
     if (result.rows.length > 0) {
       const { id, nombre } = result.rows[0];
-
       const token = jwt.sign({ id, nombre }, SECRET_KEY, { expiresIn: '1h' });
 
       res.json({ valido: true, id, nombre, token });
@@ -78,7 +76,6 @@ app.post('/subirPublicacion', async (req, res) => {
     );
 
     res.json({ ok: true });
-
   } catch (err) {
     console.error('Error en /subirPublicacion:', err);
     res.status(500).json({ error: err.message });
@@ -98,7 +95,6 @@ app.post('/subirComentario', async (req, res) => {
     );
 
     res.json({ ok: true });
-
   } catch (err) {
     console.error('Error en /subirComentario:', err);
     res.status(500).json({ error: err.message });
@@ -112,7 +108,6 @@ app.get('/obcomentarios', async (req, res) => {
   try {
     const result = await pool.query('SELECT * FROM publicaciones');
     res.json(result.rows);
-
   } catch (err) {
     console.error("Error en /obcomentarios:", err);
     res.status(500).json({ error: err.message });
@@ -156,7 +151,6 @@ app.get('/checkToken', (req, res) => {
   try {
     const decoded = jwt.verify(token, SECRET_KEY);
     res.json({ valido: true, decoded });
-
   } catch (error) {
     res.status(403).json({ valido: false, message: 'Token invalido' });
   }
