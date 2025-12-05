@@ -13,13 +13,25 @@ const params = url.parse(process.env.DATABASE_URL);
 const auth = params.auth.split(':');
 
 const pool = new Pool({
-  user: auth[0],
-  password: auth[1],
-  host: params.hostname,
-  port: parseInt(params.port),
-  database: params.pathname.split('/')[1],
-  ssl: { rejectUnauthorized: false },
-  family: 4  // ⚡ Forzar IPv4
+  connectionString: process.env.DATABASE_URL,
+  ssl: {
+    rejectUnauthorized: false
+  },
+  // Configuración más explícita para forzar IPv4
+  connectionTimeoutMillis: 10000,
+  idleTimeoutMillis: 30000,
+  // Estas opciones adicionales pueden ayudar
+  ...(process.env.NODE_ENV === 'production' && {
+    host: new URL(process.env.DATABASE_URL).hostname,
+    port: 5432,
+    // Forzar IPv4 explícitamente
+    family: 4,
+    // Evitar que use direcciones IPv6
+    lookup: (hostname, options, callback) => {
+      // Forzar resolución DNS a IPv4
+      require('dns').lookup(hostname, { family: 4 }, callback);
+    }
+  })
 });
 
 const SECRET_KEY = 'token1';
