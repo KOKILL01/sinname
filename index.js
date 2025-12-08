@@ -1,22 +1,64 @@
 const express = require('express');
 const cors = require('cors');
 const { Pool } = require('pg');
-const url = require('url');
 const jwt = require('jsonwebtoken');
 
 const app = express();
 app.use(cors());
 app.use(express.json());
 
-// ... (conexión a base de datos igual que tienes) ...
+// === CONEXIÓN A SUPABASE / RENDER ===
+let pool;
 
-const SECRET_KEY = 'token1';
+try {
+  // Verifica que la variable de entorno exista
+  if (!process.env.DATABASE_URL) {
+    console.error('ERROR: DATABASE_URL no está definida en las variables de entorno');
+    // Para desarrollo local, podrías usar una conexión local
+    if (process.env.NODE_ENV !== 'production') {
+      console.log('Modo desarrollo: usando conexión local');
+      pool = new Pool({
+        user: 'postgres',
+        host: 'localhost',
+        database: 'tu_base_datos',
+        password: 'tu_password',
+        port: 5432,
+      });
+    }
+  } else {
+    console.log('Conectando a la base de datos...');
+    pool = new Pool({
+      connectionString: process.env.DATABASE_URL,
+      ssl: {
+        rejectUnauthorized: false
+      }
+    });
+    
+    // Verifica la conexión
+    pool.connect((err, client, release) => {
+      if (err) {
+        console.error('Error conectando a la base de datos:', err.message);
+      } else {
+        console.log('✅ Conexión a la base de datos exitosa');
+        release();
+      }
+    });
+  }
+} catch (error) {
+  console.error('Error inicializando pool:', error);
+}
+
+const SECRET_KEY = process.env.SECRET_KEY || 'token1';
 
 // =========================
 //      RUTA REGISTRO
 // =========================
 app.post('/usuarios', async (req, res) => {
   const { nombre, correo, password } = req.body;
+
+  if (!pool) {
+    return res.status(500).json({ error: 'Base de datos no disponible' });
+  }
 
   try {
     await pool.query(
@@ -36,6 +78,10 @@ app.post('/usuarios', async (req, res) => {
 // =========================
 app.post('/login', async (req, res) => {
   const { nombre, password } = req.body;
+
+  if (!pool) {
+    return res.status(500).json({ error: 'Base de datos no disponible' });
+  }
 
   try {
     const result = await pool.query(
@@ -64,6 +110,10 @@ app.post('/login', async (req, res) => {
 app.post('/subirPublicacion', async (req, res) => {
   const { idusuario, titulo, texto } = req.body;
 
+  if (!pool) {
+    return res.status(500).json({ error: 'Base de datos no disponible' });
+  }
+
   try {
     await pool.query(
       'INSERT INTO publicaciones (idusuario, titulo, texto) VALUES ($1, $2, $3)',
@@ -83,6 +133,10 @@ app.post('/subirPublicacion', async (req, res) => {
 app.post('/subirComentario', async (req, res) => {
   const { idpublicacion, idusuario, comentario } = req.body;
 
+  if (!pool) {
+    return res.status(500).json({ error: 'Base de datos no disponible' });
+  }
+
   try {
     await pool.query(
       'INSERT INTO comentariosPublicaciones (idpublicacion, idusuario, comentario) VALUES ($1, $2, $3)',
@@ -97,9 +151,13 @@ app.post('/subirComentario', async (req, res) => {
 });
 
 // =========================
-//   OBTENER TODAS LAS PUBLICACIONES
+//   OBTENER PUBLICACIONES
 // =========================
 app.get('/obcomentarios', async (req, res) => {
+  if (!pool) {
+    return res.status(500).json({ error: 'Base de datos no disponible' });
+  }
+
   try {
     const result = await pool.query('SELECT * FROM publicaciones ORDER BY id DESC');
     res.json(result.rows);
@@ -114,6 +172,10 @@ app.get('/obcomentarios', async (req, res) => {
 // =========================
 app.get('/publicacion/:id', async (req, res) => {
   const { id } = req.params;
+
+  if (!pool) {
+    return res.status(500).json({ error: 'Base de datos no disponible' });
+  }
 
   try {
     const result = await pool.query(
@@ -134,58 +196,42 @@ app.get('/publicacion/:id', async (req, res) => {
 });
 
 // =========================
-//   OBTENER COMENTARIOS DE UNA PUBLICACIÓN (VERSIÓN SIMPLIFICADA)
+//   OBTENER COMENTARIOS DE UNA PUBLICACIÓN
 // =========================
 app.get('/comentarios/:idpublicacion', async (req, res) => {
   const { idpublicacion } = req.params;
 
-  try {
-    // Primero, intenta con JOIN para obtener nombre del usuario
-    try {
-      const result = await pool.query(
-        `SELECT cp.*, u.nombre as usuario_nombre 
-         FROM comentariosPublicaciones cp
-         LEFT JOIN usuarios u ON cp.idusuario = u.id
-         WHERE cp.idpublicacion = $1
-         ORDER BY cp.id ASC`,
-        [idpublicacion]
-      );
-      
-      res.json(result.rows);
-    } catch (joinError) {
-      // Si falla el JOIN, devuelve solo los comentarios sin el nombre
-      console.log('JOIN falló, usando consulta simple:', joinError.message);
-      
-      const result = await pool.query(
-        'SELECT * FROM comentariosPublicaciones WHERE idpublicacion = $1 ORDER BY id ASC',
-        [idpublicacion]
-      );
-      
-      res.json(result.rows);
-    }
+  if (!pool) {
+    return res.status(500).json({ error: 'Base de datos no disponible' });
+  }
 
+  try {
+    const result = await pool.query(
+      'SELECT * FROM comentariosPublicaciones WHERE idpublicacion = $1 ORDER BY id ASC',
+      [idpublicacion]
+    );
+
+    res.json(result.rows);
   } catch (err) {
     console.error("Error en /comentarios/:idpublicacion:", err);
-    
-    // Si no hay comentarios, devuelve un array vacío en lugar de error
-    if (err.message.includes('no existe')) {
-      res.json([]);
-    } else {
-      res.status(500).json({ error: err.message });
-    }
+    res.status(500).json({ error: err.message });
   }
 });
 
 // =========================
-//   OBTENER PUBLICACIONES DE UN USUARIO (POR ID USUARIO)
+//   OBTENER PUBLICACIONES DE UN USUARIO
 // =========================
-app.get('/publicaciones-usuario/:idusuario', async (req, res) => {
-  const { idusuario } = req.params;
+app.get('/publicaciones/:id', async (req, res) => {
+  const { id } = req.params;
+
+  if (!pool) {
+    return res.status(500).json({ error: 'Base de datos no disponible' });
+  }
 
   try {
     const result = await pool.query(
       'SELECT * FROM publicaciones WHERE idusuario = $1 ORDER BY id DESC',
-      [idusuario]
+      [id]
     );
 
     if (result.rows.length > 0) {
@@ -195,7 +241,7 @@ app.get('/publicaciones-usuario/:idusuario', async (req, res) => {
     }
 
   } catch (err) {
-    console.error("Error en /publicaciones-usuario/:idusuario:", err);
+    console.error("Error en /publicaciones/:id:", err);
     res.status(500).json({ error: err.message });
   }
 });
@@ -219,9 +265,21 @@ app.get('/checkToken', (req, res) => {
 });
 
 // =========================
+//       HEALTH CHECK
+// =========================
+app.get('/health', (req, res) => {
+  res.json({ 
+    status: 'ok', 
+    database: pool ? 'connected' : 'disconnected',
+    timestamp: new Date().toISOString()
+  });
+});
+
+// =========================
 //       INICIAR SERVIDOR
 // =========================
-const PORT = process.env.PORT || 3000;
+const PORT = process.env.PORT || 10000;
 app.listen(PORT, () => {
   console.log(`Servidor backend funcionando en puerto ${PORT}`);
+  console.log(`Health check disponible en: http://localhost:${PORT}/health`);
 });
