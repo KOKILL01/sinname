@@ -101,6 +101,9 @@ app.post('/subirPublicacion', async (req, res) => {
   }
 });
 
+
+
+
 // =========================
 //     SUBIR COMENTARIO
 // =========================
@@ -136,26 +139,51 @@ app.get('/obcomentarios', async (req, res) => {
 // =========================
 //     PUBLICACIONES POR ID
 // =========================
-app.get('/publicaciones/:id', async (req, res) => {
+app.get('/publicacion/:id', async (req, res) => {
   const { id } = req.params;
 
   try {
     const result = await pool.query(
-      'SELECT * FROM publicaciones WHERE idusuario = $1',
+      'SELECT * FROM publicaciones WHERE id = $1',
       [id]
     );
 
     if (result.rows.length > 0) {
-      res.json(result.rows);
+      res.json({ publicacion: result.rows[0] });
     } else {
-      res.status(404).json({ error: 'sin publicaciones' });
+      res.status(404).json({ error: 'Publicación no encontrada' });
     }
 
   } catch (err) {
-    console.error("Error en /publicaciones/:id:", err);
+    console.error("Error en /publicacion/:id:", err);
     res.status(500).json({ error: err.message });
   }
 });
+
+
+// =========================
+//   OBTENER COMENTARIOS DE UNA PUBLICACIÓN
+// =========================
+app.get('/comentarios/:idpublicacion', async (req, res) => {
+  const { idpublicacion } = req.params;
+
+  try {
+    const result = await pool.query(
+      `SELECT cp.*, u.nombre as usuario_nombre 
+       FROM comentariosPublicaciones cp
+       JOIN usuarios u ON cp.idusuario = u.id
+       WHERE cp.idpublicacion = $1
+       ORDER BY cp.id ASC`,
+      [idpublicacion]
+    );
+
+    res.json(result.rows);
+  } catch (err) {
+    console.error("Error en /comentarios/:idpublicacion:", err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 
 // =========================
 //       CHECK TOKEN
