@@ -8,31 +8,7 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 
-// === CONEXIÓN A SUPABASE / RENDER ===
-const params = url.parse(process.env.DATABASE_URL);
-const auth = params.auth.split(':');
-
-const pool = new Pool({
-  connectionString: process.env.DATABASE_URL,
-  ssl: {
-    rejectUnauthorized: false
-  },
-  // Configuración más explícita para forzar IPv4
-  connectionTimeoutMillis: 10000,
-  idleTimeoutMillis: 30000,
-  // Estas opciones adicionales pueden ayudar
-  ...(process.env.NODE_ENV === 'production' && {
-    host: new URL(process.env.DATABASE_URL).hostname,
-    port: 5432,
-    // Forzar IPv4 explícitamente
-    family: 4,
-    // Evitar que use direcciones IPv6
-    lookup: (hostname, options, callback) => {
-      // Forzar resolución DNS a IPv4
-      require('dns').lookup(hostname, { family: 4 }, callback);
-    }
-  })
-});
+// ... (conexión a base de datos igual que tienes) ...
 
 const SECRET_KEY = 'token1';
 
@@ -101,9 +77,6 @@ app.post('/subirPublicacion', async (req, res) => {
   }
 });
 
-
-
-
 // =========================
 //     SUBIR COMENTARIO
 // =========================
@@ -124,11 +97,11 @@ app.post('/subirComentario', async (req, res) => {
 });
 
 // =========================
-//   OBTENER PUBLICACIONES
+//   OBTENER TODAS LAS PUBLICACIONES
 // =========================
 app.get('/obcomentarios', async (req, res) => {
   try {
-    const result = await pool.query('SELECT * FROM publicaciones');
+    const result = await pool.query('SELECT * FROM publicaciones ORDER BY id DESC');
     res.json(result.rows);
   } catch (err) {
     console.error("Error en /obcomentarios:", err);
@@ -137,7 +110,7 @@ app.get('/obcomentarios', async (req, res) => {
 });
 
 // =========================
-//     PUBLICACIONES POR ID
+//   OBTENER UNA PUBLICACIÓN POR SU ID
 // =========================
 app.get('/publicacion/:id', async (req, res) => {
   const { id } = req.params;
@@ -160,30 +133,72 @@ app.get('/publicacion/:id', async (req, res) => {
   }
 });
 
-
 // =========================
-//   OBTENER COMENTARIOS DE UNA PUBLICACIÓN
+//   OBTENER COMENTARIOS DE UNA PUBLICACIÓN (VERSIÓN SIMPLIFICADA)
 // =========================
 app.get('/comentarios/:idpublicacion', async (req, res) => {
   const { idpublicacion } = req.params;
 
   try {
-    const result = await pool.query(
-      `SELECT cp.*, u.nombre as usuario_nombre 
-       FROM comentariosPublicaciones cp
-       JOIN usuarios u ON cp.idusuario = u.id
-       WHERE cp.idpublicacion = $1
-       ORDER BY cp.id ASC`,
-      [idpublicacion]
-    );
+    // Primero, intenta con JOIN para obtener nombre del usuario
+    try {
+      const result = await pool.query(
+        `SELECT cp.*, u.nombre as usuario_nombre 
+         FROM comentariosPublicaciones cp
+         LEFT JOIN usuarios u ON cp.idusuario = u.id
+         WHERE cp.idpublicacion = $1
+         ORDER BY cp.id ASC`,
+        [idpublicacion]
+      );
+      
+      res.json(result.rows);
+    } catch (joinError) {
+      // Si falla el JOIN, devuelve solo los comentarios sin el nombre
+      console.log('JOIN falló, usando consulta simple:', joinError.message);
+      
+      const result = await pool.query(
+        'SELECT * FROM comentariosPublicaciones WHERE idpublicacion = $1 ORDER BY id ASC',
+        [idpublicacion]
+      );
+      
+      res.json(result.rows);
+    }
 
-    res.json(result.rows);
   } catch (err) {
     console.error("Error en /comentarios/:idpublicacion:", err);
-    res.status(500).json({ error: err.message });
+    
+    // Si no hay comentarios, devuelve un array vacío en lugar de error
+    if (err.message.includes('no existe')) {
+      res.json([]);
+    } else {
+      res.status(500).json({ error: err.message });
+    }
   }
 });
 
+// =========================
+//   OBTENER PUBLICACIONES DE UN USUARIO (POR ID USUARIO)
+// =========================
+app.get('/publicaciones-usuario/:idusuario', async (req, res) => {
+  const { idusuario } = req.params;
+
+  try {
+    const result = await pool.query(
+      'SELECT * FROM publicaciones WHERE idusuario = $1 ORDER BY id DESC',
+      [idusuario]
+    );
+
+    if (result.rows.length > 0) {
+      res.json(result.rows);
+    } else {
+      res.status(404).json({ error: 'sin publicaciones' });
+    }
+
+  } catch (err) {
+    console.error("Error en /publicaciones-usuario/:idusuario:", err);
+    res.status(500).json({ error: err.message });
+  }
+});
 
 // =========================
 //       CHECK TOKEN
